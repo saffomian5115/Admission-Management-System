@@ -183,6 +183,10 @@ function PrintPreview({ student, printInstructions, documents, onClose }) {
               </ul>
             </div>
           )}
+
+          <div className="print-footer">
+            <p>Developed by Sarfraz (IT department)</p>
+          </div>
         </div>
       </div>
     </div>

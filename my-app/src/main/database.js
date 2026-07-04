@@ -209,19 +209,21 @@ export function createStudent(data) {
   if (data.level === 'inter') {
     if (data.marks_10th) {
       marksFields.push('marks_10th')
+      totalMarks = 1100
     } else if (data.marks_9th) {
       marksFields.push('marks_9th')
+      totalMarks = 550
     }
   } else {
     if (data.marks_12th) {
       marksFields.push('marks_12th')
+      totalMarks = 1100
     } else if (data.marks_11th) {
       marksFields.push('marks_11th')
+      totalMarks = 550
     }
   }
 
-  // For simplicity, use 1100 as total marks for all
-  totalMarks = 1100
   if (marksFields.length > 0) {
     const field = marksFields[0]
     obtainedMarks = data[field] || 0
@@ -278,18 +280,21 @@ export function updateStudent(id, data) {
   if (data.level === 'inter') {
     if (data.marks_10th) {
       marksFields.push('marks_10th')
+      totalMarks = 1100
     } else if (data.marks_9th) {
       marksFields.push('marks_9th')
+      totalMarks = 550
     }
   } else {
     if (data.marks_12th) {
       marksFields.push('marks_12th')
+      totalMarks = 1100
     } else if (data.marks_11th) {
       marksFields.push('marks_11th')
+      totalMarks = 550
     }
   }
 
-  totalMarks = 1100
   if (marksFields.length > 0) {
     const field = marksFields[0]
     obtainedMarks = data[field] || 0

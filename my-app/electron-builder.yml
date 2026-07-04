@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: my-app
+appId: com.pgc.admission
+productName: PGC Admission Management System
 directories:
   buildResources: build
 files:
@@ -11,11 +11,11 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: my-app
+  executableName: PGC-Admission-System
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: PGC-Admission-System-${version}-setup.${ext}
+  shortcutName: PGC Admission Management System
+  uninstallDisplayName: PGC Admission Management System
   createDesktopShortcut: always
 mac:
   entitlementsInherit: build/entitlements.mac.plist

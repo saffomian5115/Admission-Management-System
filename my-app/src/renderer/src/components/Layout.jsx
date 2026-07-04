@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { IconDashboard, IconAdmission, IconRecords, IconReports, IconSettings, IconBook } from './Icons'
+import { IconDashboard, IconAdmission, IconRecords, IconReports, IconSettings } from './Icons'
+import sidebarLogo from '../assets/punjabcollege.png'
 
 const navItems = [
   { path: '/', icon: <IconDashboard color="#fff" />, label: 'Dashboard' },
@@ -14,8 +15,9 @@ function Layout() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h1><IconBook color="#fff" size={20} style={{ verticalAlign: 'middle', marginRight: 6 }} /> Admission System</h1>
-          <p>Management Portal v1.0</p>
+          <img src={sidebarLogo} alt="PGC Logo" className="sidebar-logo" />
+          <h1>PGC Admission System</h1>
+          <p>Punjab College Mian Channu</p>
         </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => (
@@ -30,8 +32,9 @@ function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.1)', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-          Admission Management System
+        <div className="sidebar-footer">
+          <strong>Developed by Sarfraz</strong>
+          <span>(IT Department)</span>
         </div>
       </aside>
       <main className="main-content">

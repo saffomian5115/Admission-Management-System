@@ -1,10 +1,10 @@
 {
-  "name": "my-app",
+  "name": "pgc-admission-system",
   "version": "1.0.0",
-  "description": "An Electron application with React",
+  "description": "PGC Admission Management System - Punjab College Mian Channu",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Punjab College Mian Channu",
+  "homepage": "",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -22,6 +22,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "better-sqlite3": "^12.11.1",
     "react-router-dom": "^7.18.1",
+    "twilio": "^6.0.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
