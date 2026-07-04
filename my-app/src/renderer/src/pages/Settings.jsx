@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { IconSettings, IconDollar, IconFile, IconPrinter, IconMessage, IconBook, IconTrash, IconPlus, IconClose, IconSave, IconRefresh } from '../components/Icons'
+import { IconSettings, IconDollar, IconFile, IconPrinter, IconMessage, IconBook, IconTrash, IconPlus, IconClose, IconSave, IconRefresh, IconChart } from '../components/Icons'
 
 function Settings() {
   const [activeTab, setActiveTab] = useState('fees')
@@ -11,9 +11,17 @@ function Settings() {
 
   // Fee slabs state
   const [feeSlabs, setFeeSlabs] = useState([])
+  const [interAdmissionFee, setInterAdmissionFee] = useState(5000)
+  const [interAnnualFund, setInterAnnualFund] = useState(2000)
+  const [bsAdmissionFee, setBsAdmissionFee] = useState(3000)
+  const [bsInhouseExamFee, setBsInhouseExamFee] = useState(1000)
+  const [bsSemesterFee, setBsSemesterFee] = useState(45000)
+  const [bsSemesterFeeIt, setBsSemesterFeeIt] = useState(50000)
+  const [bsItPrograms, setBsItPrograms] = useState('IT, CS, SE, AI')
   const [documentsInter, setDocumentsInter] = useState([])
   const [documentsBs, setDocumentsBs] = useState([])
-  const [printInstructions, setPrintInstructions] = useState('')
+  const [printInstructionsInter, setPrintInstructionsInter] = useState('')
+  const [printInstructionsBs, setPrintInstructionsBs] = useState('')
   const [messageTemplate, setMessageTemplate] = useState('')
   const [dbFilePath, setDbFilePath] = useState('')
 
@@ -37,13 +45,27 @@ function Settings() {
       if (settingsRes.success) {
         setSettings(settingsRes.data)
         setFeeSlabs(settingsRes.data.fee_slabs || [])
+        setInterAdmissionFee(settingsRes.data.inter_admission_fee ?? 5000)
+        setInterAnnualFund(settingsRes.data.inter_annual_fund ?? 2000)
+        setBsAdmissionFee(settingsRes.data.bs_admission_fee ?? 3000)
+        setBsInhouseExamFee(settingsRes.data.bs_inhouse_exam_fee ?? 1000)
+        setBsSemesterFee(settingsRes.data.bs_semester_fee ?? 45000)
+        setBsSemesterFeeIt(settingsRes.data.bs_semester_fee_it ?? 50000)
+        setBsItPrograms((settingsRes.data.bs_it_programs || ['IT', 'CS', 'SE', 'AI']).join(', '))
         setDocumentsInter((settingsRes.data.documents_inter || []).map(d => normalizeDoc(d)))
         setDocumentsBs((settingsRes.data.documents_bs || []).map(d => normalizeDoc(d)))
-        setPrintInstructions(
-          settingsRes.data.print_instructions
-            ? (Array.isArray(settingsRes.data.print_instructions)
-              ? settingsRes.data.print_instructions.join('\n')
-              : settingsRes.data.print_instructions)
+        setPrintInstructionsInter(
+          settingsRes.data.print_instructions_inter
+            ? (Array.isArray(settingsRes.data.print_instructions_inter)
+              ? settingsRes.data.print_instructions_inter.join('\n')
+              : settingsRes.data.print_instructions_inter)
+            : ''
+        )
+        setPrintInstructionsBs(
+          settingsRes.data.print_instructions_bs
+            ? (Array.isArray(settingsRes.data.print_instructions_bs)
+              ? settingsRes.data.print_instructions_bs.join('\n')
+              : settingsRes.data.print_instructions_bs)
             : ''
         )
         setMessageTemplate(
@@ -75,9 +97,15 @@ function Settings() {
   const handleSaveFeeSlabs = async () => {
     setSaving(true)
     try {
-      const res = await window.api.settings.update('fee_slabs', feeSlabs)
-      if (res.success) showToast('✅ Fee slabs saved!', 'success')
-      else showToast(`❌ Error: ${res.error}`, 'error')
+      await window.api.settings.update('fee_slabs', feeSlabs)
+      await window.api.settings.update('inter_admission_fee', parseFloat(interAdmissionFee) || 0)
+      await window.api.settings.update('inter_annual_fund', parseFloat(interAnnualFund) || 0)
+      await window.api.settings.update('bs_admission_fee', parseFloat(bsAdmissionFee) || 0)
+      await window.api.settings.update('bs_inhouse_exam_fee', parseFloat(bsInhouseExamFee) || 0)
+      await window.api.settings.update('bs_semester_fee', parseFloat(bsSemesterFee) || 0)
+      await window.api.settings.update('bs_semester_fee_it', parseFloat(bsSemesterFeeIt) || 0)
+      await window.api.settings.update('bs_it_programs', bsItPrograms.split(',').map(s => s.trim()).filter(Boolean))
+      showToast('✅ All fee settings saved!', 'success')
     } catch (err) {
       showToast(`❌ Error: ${err.message}`, 'error')
     } finally {
@@ -101,7 +129,8 @@ function Settings() {
   const handleSavePrint = async () => {
     setSaving(true)
     try {
-      await window.api.settings.update('print_instructions', printInstructions)
+      await window.api.settings.update('print_instructions_inter', printInstructionsInter)
+      await window.api.settings.update('print_instructions_bs', printInstructionsBs)
       showToast('✅ Print instructions saved!', 'success')
     } catch (err) {
       showToast(`❌ Error: ${err.message}`, 'error')
@@ -246,67 +275,161 @@ function Settings() {
           </div>
         </div>
 
-        {/* Fee Slabs */}
+        {/* Fee Configuration */}
         {activeTab === 'fees' && (
           <div className="card">
-            <div className="card-title"><IconDollar size={16} color="#1a1a2e" style={{ verticalAlign: 'middle', marginRight: 6 }} /> Fee Slabs Configuration</div>
-            <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-              Fee auto-calculation based on percentage marks. Slabs are checked in order.
-            </p>
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Min %</th>
-                    <th>Max %</th>
-                    <th>Fee (Rs.)</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {feeSlabs.map((slab, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <input
-                          type="number"
-                          value={slab.min}
-                          onChange={(e) => updateSlab(idx, 'min', e.target.value)}
-                          style={{ width: 80, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4 }}
-                          min="0"
-                          max="100"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          value={slab.max}
-                          onChange={(e) => updateSlab(idx, 'max', e.target.value)}
-                          style={{ width: 80, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4 }}
-                          min="0"
-                          max="100"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          value={slab.fee}
-                          onChange={(e) => updateSlab(idx, 'fee', e.target.value)}
-                          style={{ width: 120, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4 }}
-                          min="0"
-                        />
-                      </td>
-                      <td>
-                        <button className="icon-btn" onClick={() => removeSlab(idx)} title="Remove"><IconTrash size={14} color="#e53935" /></button>
-                      </td>
+            <div className="card-title"><IconDollar size={16} color="#1a1a2e" style={{ verticalAlign: 'middle', marginRight: 6 }} /> Fee Configuration</div>
+
+            {/* Inter Fee Section */}
+            <div style={{ padding: '16px', background: '#f8f9fa', borderRadius: 8, marginBottom: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 12 }}>🎓 Inter Fee Structure</h3>
+              <div className="form-row" style={{ marginBottom: 12 }}>
+                <div className="form-group">
+                  <label>Admission Fee (Rs.)</label>
+                  <input
+                    type="number"
+                    value={interAdmissionFee}
+                    onChange={(e) => setInterAdmissionFee(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Annual Fund (Rs.)</label>
+                  <input
+                    type="number"
+                    value={interAnnualFund}
+                    onChange={(e) => setInterAnnualFund(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                </div>
+              </div>
+              <p style={{ fontSize: 13, color: '#888', marginBottom: 10 }}>
+                <strong>Tuition Fee Slabs</strong> — based on percentage marks (checked in order):
+              </p>
+              <div className="table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Min %</th>
+                      <th>Max %</th>
+                      <th>Tuition Fee (Rs.)</th>
+                      <th>Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {feeSlabs.map((slab, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <input
+                            type="number"
+                            value={slab.min}
+                            onChange={(e) => updateSlab(idx, 'min', e.target.value)}
+                            style={{ width: 70, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4, fontFamily: 'inherit' }}
+                            min="0"
+                            max="100"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={slab.max}
+                            onChange={(e) => updateSlab(idx, 'max', e.target.value)}
+                            style={{ width: 70, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4, fontFamily: 'inherit' }}
+                            min="0"
+                            max="100"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={slab.fee}
+                            onChange={(e) => updateSlab(idx, 'fee', e.target.value)}
+                            style={{ width: 100, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4, fontFamily: 'inherit' }}
+                            min="0"
+                          />
+                        </td>
+                        <td>
+                          <button className="icon-btn" onClick={() => removeSlab(idx)} title="Remove"><IconTrash size={14} color="#e53935" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={addSlab} style={{ marginTop: 8 }}>
+                <IconPlus size={14} color="#555" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Add Slab
+              </button>
             </div>
+
+            {/* BS Fee Section */}
+            <div style={{ padding: '16px', background: '#f3e5f5', borderRadius: 8, marginBottom: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 12 }}>📘 BS Fee Structure</h3>
+              <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+                BS fees are fixed (no marks-based calculation).
+              </p>
+              <div className="form-row" style={{ marginBottom: 12 }}>
+                <div className="form-group">
+                  <label>Admission Fee (Rs.)</label>
+                  <input
+                    type="number"
+                    value={bsAdmissionFee}
+                    onChange={(e) => setBsAdmissionFee(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>In-House Exam Fee (per sem, Rs.)</label>
+                  <input
+                    type="number"
+                    value={bsInhouseExamFee}
+                    onChange={(e) => setBsInhouseExamFee(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                </div>
+              </div>
+              <div className="form-row" style={{ marginBottom: 12 }}>
+                <div className="form-group">
+                  <label>Default Semester Fee (Rs.)</label>
+                  <input
+                    type="number"
+                    value={bsSemesterFee}
+                    onChange={(e) => setBsSemesterFee(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                  <span className="field-hint">Applied to all BS programs except IT programs</span>
+                </div>
+                <div className="form-group">
+                  <label>IT Program Semester Fee (Rs.)</label>
+                  <input
+                    type="number"
+                    value={bsSemesterFeeIt}
+                    onChange={(e) => setBsSemesterFeeIt(e.target.value)}
+                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                    min="0"
+                  />
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label>IT Programs (comma-separated program names)</label>
+                <input
+                  type="text"
+                  value={bsItPrograms}
+                  onChange={(e) => setBsItPrograms(e.target.value)}
+                  style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                  placeholder="IT, CS, SE, AI"
+                />
+                <span className="field-hint">Programs matching these names will get the higher IT semester fee</span>
+              </div>
+            </div>
+
             <div className="btn-group" style={{ marginTop: 12 }}>
-              <button className="btn btn-secondary btn-sm" onClick={addSlab}><IconPlus size={14} color="#555" style={{ verticalAlign: 'middle', marginRight: 4 }} /> Add Slab</button>
               <button className="btn btn-primary" onClick={handleSaveFeeSlabs} disabled={saving}>
-                {saving ? 'Saving...' : <><IconSave color="#fff" size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Save Fee Slabs</>}
+                {saving ? 'Saving...' : <><IconSave color="#fff" size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Save All Fee Settings</>}
               </button>
             </div>
           </div>
@@ -402,14 +525,31 @@ function Settings() {
         {activeTab === 'print' && (
           <div className="card">
             <div className="card-title"><IconPrinter size={16} color="#1a1a2e" style={{ verticalAlign: 'middle', marginRight: 6 }} /> Print Settings</div>
-            <div className="form-group full-width" style={{ marginBottom: 16 }}>
-              <label>End Instructions (shown at bottom of print)</label>
-              <textarea
-                value={printInstructions}
-                onChange={(e) => setPrintInstructions(e.target.value)}
-                rows={4}
-                placeholder="Enter instructions that appear at the bottom of the printed document..."
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+              <div className="settings-section">
+                <h3>🎓 Inter Instructions</h3>
+                <p style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>End instructions shown at bottom of Inter admission print.</p>
+                <div className="form-group full-width" style={{ marginBottom: 16 }}>
+                  <textarea
+                    value={printInstructionsInter}
+                    onChange={(e) => setPrintInstructionsInter(e.target.value)}
+                    rows={4}
+                    placeholder="Enter instructions for Inter admissions..."
+                  />
+                </div>
+              </div>
+              <div className="settings-section">
+                <h3>📘 BS Instructions</h3>
+                <p style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>End instructions shown at bottom of BS admission print.</p>
+                <div className="form-group full-width" style={{ marginBottom: 16 }}>
+                  <textarea
+                    value={printInstructionsBs}
+                    onChange={(e) => setPrintInstructionsBs(e.target.value)}
+                    rows={4}
+                    placeholder="Enter instructions for BS admissions..."
+                  />
+                </div>
+              </div>
             </div>
             <div className="btn-group">
               <button className="btn btn-primary" onClick={handleSavePrint} disabled={saving}>

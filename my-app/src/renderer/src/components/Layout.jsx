@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { IconDashboard, IconAdmission, IconRecords, IconReports, IconSettings } from './Icons'
+import { IconDashboard, IconAdmission, IconRecords, IconReports, IconSettings, IconMessage } from './Icons'
 import sidebarLogo from '../assets/punjabcollege.png'
 
 const navItems = [
   { path: '/', icon: <IconDashboard color="#fff" />, label: 'Dashboard' },
   { path: '/new-admission', icon: <IconAdmission color="#fff" />, label: 'New Admission' },
   { path: '/records', icon: <IconRecords color="#fff" />, label: 'Student Records' },
+  { path: '/messages', icon: <IconMessage color="#fff" />, label: 'Messages' },
   { path: '/reports', icon: <IconReports color="#fff" />, label: 'Reports' },
   { path: '/settings', icon: <IconSettings color="#fff" />, label: 'Settings' }
 ]
@@ -34,7 +35,7 @@ function Layout() {
         </nav>
         <div className="sidebar-footer">
           <strong>Developed by Sarfraz</strong>
-          <span>(IT Department)</span>
+          <span>(IT Department PGC)</span>
         </div>
       </aside>
       <main className="main-content">

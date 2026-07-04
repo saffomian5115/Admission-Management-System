@@ -35,6 +35,12 @@ const api = {
     dashboard: () => ipcRenderer.invoke('reports:dashboard')
   },
 
+  // Messages
+  messages: {
+    getLogs: (studentId) => ipcRenderer.invoke('messages:getLogs', studentId),
+    log: (data) => ipcRenderer.invoke('messages:log', data)
+  },
+
   // Database (backup, etc.)
   database: {
     backup: () => ipcRenderer.invoke('database:backup'),

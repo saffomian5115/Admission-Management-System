@@ -25,11 +25,20 @@ function StudentRecords() {
     admission_program_id: '', marks_9th: '', marks_10th: '', marks_11th: '', marks_12th: '',
     result_available: true
   })
+  const [editCampus, setEditCampus] = useState('punjab')
   const [programs, setPrograms] = useState([])
+  const [interPrograms, setInterPrograms] = useState([])
 
   useEffect(() => {
     loadStudents()
   }, [])
+
+  const loadInterPrograms = async () => {
+    const res = await window.api.programs.getAll('inter')
+    if (res.success) {
+      setInterPrograms(res.data)
+    }
+  }
 
   const loadStudents = async () => {
     setLoading(true)
@@ -67,11 +76,20 @@ function StudentRecords() {
   const handleEdit = async (student) => {
     const res = await window.api.programs.getAll(student.level)
     if (res.success) setPrograms(res.data)
+    // Also load inter programs for BS students' previous program
+    await loadInterPrograms()
 
     // Determine result_available based on which marks are filled
     const has10thOr12th = student.level === 'inter'
       ? (student.marks_10th !== null && student.marks_10th !== undefined)
       : (student.marks_12th !== null && student.marks_12th !== undefined)
+
+    // Determine campus from student's program
+    const selectedProgram = res.data?.find(p => p.id === student.admission_program_id)
+    const campus = !selectedProgram || selectedProgram.institute_type === 'punjab' || selectedProgram.institute_type === 'both'
+      ? 'punjab'
+      : 'riahs'
+    setEditCampus(campus)
 
     setEditingStudent(student)
     setEditForm({
@@ -241,9 +259,10 @@ function StudentRecords() {
                             </svg>
                           </button>
                           <button className="icon-btn" onClick={async () => {
+                            const instructionsKey = s.level === 'inter' ? 'print_instructions_inter' : 'print_instructions_bs'
                             const [studentRes, settingsRes, docsRes] = await Promise.all([
                               window.api.students.getById(s.id),
-                              window.api.settings.get('print_instructions'),
+                              window.api.settings.get(instructionsKey),
                               window.api.settings.get(s.level === 'inter' ? 'documents_inter' : 'documents_bs')
                             ])
                             if (studentRes.success) {
@@ -303,10 +322,19 @@ function StudentRecords() {
                 </div>
                 <div className="form-group">
                   <label>Previous Program</label>
-                  <select value={editForm.previous_program} onChange={(e) => setEditForm({ ...editForm, previous_program: e.target.value })}>
-                    <option value="science">Science</option>
-                    <option value="arts">Arts</option>
-                  </select>
+                  {editingStudent?.level === 'inter' ? (
+                    <select value={editForm.previous_program} onChange={(e) => setEditForm({ ...editForm, previous_program: e.target.value })}>
+                      <option value="science">Science</option>
+                      <option value="arts">Arts</option>
+                    </select>
+                  ) : (
+                    <select value={editForm.previous_program} onChange={(e) => setEditForm({ ...editForm, previous_program: e.target.value })}>
+                      <option value="">-- Select Previous Program --</option>
+                      {interPrograms.map((p) => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
               <div className="form-row three-col">
@@ -334,11 +362,46 @@ function StudentRecords() {
                   <label>Major Subjects</label>
                   <input type="text" value={editForm.major_subjects} onChange={(e) => setEditForm({ ...editForm, major_subjects: e.target.value })} />
                 </div>
+                {/* Campus selector for BS students in edit modal */}
+                {editingStudent?.level === 'bs' && (
+                  <div className="form-group">
+                    <label>Campus</label>
+                    <div className="campus-toggle">
+                      <button
+                        type="button"
+                        className={`campus-btn ${editCampus === 'punjab' ? 'active' : ''}`}
+                        onClick={() => {
+                          setEditCampus('punjab')
+                          setEditForm(prev => ({ ...prev, admission_program_id: '' }))
+                        }}
+                      >
+                        🏛️ Punjab College
+                      </button>
+                      <button
+                        type="button"
+                        className={`campus-btn ${editCampus === 'riahs' ? 'active' : ''}`}
+                        onClick={() => {
+                          setEditCampus('riahs')
+                          setEditForm(prev => ({ ...prev, admission_program_id: '' }))
+                        }}
+                      >
+                        🏥 RIAHS
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="form-group">
                   <label>Admission Program</label>
                   <select value={editForm.admission_program_id} onChange={(e) => setEditForm({ ...editForm, admission_program_id: e.target.value })}>
                     <option value="">-- Select --</option>
-                    {programs.map((p) => (
+                    {(editingStudent?.level === 'bs'
+                      ? programs.filter(p => {
+                          if (editCampus === 'punjab') return p.institute_type === 'punjab' || p.institute_type === 'both'
+                          if (editCampus === 'riahs') return p.institute_type === 'regional' || p.institute_type === 'both'
+                          return true
+                        })
+                      : programs
+                    ).map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>

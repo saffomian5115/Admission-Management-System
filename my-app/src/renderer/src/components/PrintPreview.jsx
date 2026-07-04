@@ -1,8 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { IconPrinter, IconClose } from './Icons'
-import logoImg from '../assets/punjabcollege.png'
+import punjabLogo from '../assets/punjabcollege.png'
+import riahsLogo from '../assets/RIAHS.png'
 
 function PrintPreview({ student, printInstructions, documents, onClose }) {
+  const isRiahs = student?.institute_type === 'regional'
+  const instituteLogo = isRiahs ? riahsLogo : punjabLogo
+  const instituteName = isRiahs
+    ? 'Regional Institute of Allied Health Science & Higher Education'
+    : 'Punjab College Mian Channu'
+  const instituteShort = isRiahs ? 'RIAHS' : 'Punjab College'
   const printRef = useRef(null)
 
   useEffect(() => {
@@ -68,9 +75,9 @@ function PrintPreview({ student, printInstructions, documents, onClose }) {
           {/* A4 Sheet Content */}
           <div className="print-header">
             <div className="print-header-content">
-              <img src={logoImg} alt="Punjab College" className="print-logo" />
+              <img src={instituteLogo} alt={instituteShort} className="print-logo" />
               <div className="print-header-text">
-                <h1>Punjab College Mian Channu</h1>
+                <h1>{instituteName}</h1>
                 <p>Admission Confirmation Slip</p>
               </div>
             </div>
@@ -118,7 +125,7 @@ function PrintPreview({ student, printInstructions, documents, onClose }) {
               </div>
               <div className="print-row">
                 <span className="print-label">Previous Program</span>
-                <span className="print-value">{student.previous_program === 'science' ? 'Science' : 'Arts'}</span>
+                <span className="print-value">{student.previous_program === 'science' ? 'Science' : student.previous_program === 'arts' ? 'Arts' : student.previous_program || 'N/A'}</span>
               </div>
               <div className="print-row">
                 <span className="print-label">Previous Institute</span>
@@ -133,18 +140,49 @@ function PrintPreview({ student, printInstructions, documents, onClose }) {
 
           <div className="print-section">
             <h3>Academic & Fee Details</h3>
-            <div className="print-row">
-              <span className="print-label">Marks</span>
-              <span className="print-value">{marksLabel()}</span>
+            {student.level === 'inter' && (
+              <>
+                <div className="print-row">
+                  <span className="print-label">Marks</span>
+                  <span className="print-value">{marksLabel()}</span>
+                </div>
+                {student.percentage > 0 && (
+                  <div className="print-row">
+                    <span className="print-label">Percentage</span>
+                    <span className="print-value">{student.percentage.toFixed(1)}%</span>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="print-row" style={{ borderBottom: '1px dotted #eee' }}>
+              <span className="print-label">Admission Fee</span>
+              <span className="print-value">Rs. {student.fee_breakdown?.admission_fee?.toLocaleString() || student.fee?.toLocaleString() || '0'}</span>
             </div>
-            {student.percentage > 0 && (
-              <div className="print-row">
-                <span className="print-label">Percentage</span>
-                <span className="print-value">{student.percentage.toFixed(1)}%</span>
-              </div>
+            {student.level === 'inter' ? (
+              <>
+                <div className="print-row">
+                  <span className="print-label">Annual Fund</span>
+                  <span className="print-value">Rs. {student.fee_breakdown?.annual_fund?.toLocaleString() || '0'}</span>
+                </div>
+                <div className="print-row">
+                  <span className="print-label">Tuition Fee</span>
+                  <span className="print-value">Rs. {student.fee_breakdown?.tuition_fee?.toLocaleString() || '0'}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="print-row">
+                  <span className="print-label">In-House Exam Fee</span>
+                  <span className="print-value">Rs. {student.fee_breakdown?.inhouse_exam_fee?.toLocaleString() || '0'}</span>
+                </div>
+                <div className="print-row">
+                  <span className="print-label">Semester Fee</span>
+                  <span className="print-value">Rs. {student.fee_breakdown?.semester_fee?.toLocaleString() || '0'}</span>
+                </div>
+              </>
             )}
             <div className="print-row print-fee-row">
-              <span className="print-label">Admission Fee</span>
+              <span className="print-label"><strong>Total Fee</strong></span>
               <span className="print-value print-fee-value">Rs. {student.fee?.toLocaleString() || '0'}</span>
             </div>
           </div>
@@ -184,8 +222,20 @@ function PrintPreview({ student, printInstructions, documents, onClose }) {
             </div>
           )}
 
+          {/* Signature Section */}
+          <div className="print-signature-section">
+            <div className="print-signature-left">
+              <span className="print-signature-label">Student / Parent Signature</span>
+              <div className="print-signature-line"></div>
+            </div>
+            <div className="print-signature-right">
+              <span className="print-signature-label">Admission Incharge Signature</span>
+              <div className="print-signature-line"></div>
+            </div>
+          </div>
+
           <div className="print-footer">
-            <p>Developed by Sarfraz (IT department)</p>
+            <p>Developed by Sarfraz (IT Department PGC)</p>
           </div>
         </div>
       </div>

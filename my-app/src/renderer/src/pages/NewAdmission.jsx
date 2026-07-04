@@ -5,6 +5,7 @@ import PrintPreview from '../components/PrintPreview'
 function NewAdmission() {
   const [formData, setFormData] = useState({
     level: 'inter',
+    campus: 'punjab',
     name: '',
     father_name: '',
     cnic: '',
@@ -22,7 +23,9 @@ function NewAdmission() {
     result_available: false
   })
   const [programs, setPrograms] = useState([])
+  const [interPrograms, setInterPrograms] = useState([])
   const [fee, setFee] = useState(null)
+  const [feeComponents, setFeeComponents] = useState(null)
   const [percentage, setPercentage] = useState(null)
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
@@ -31,8 +34,10 @@ function NewAdmission() {
   const [printInstructions, setPrintInstructions] = useState([])
   const [printDocuments, setPrintDocuments] = useState([])
 
+  // Load programs when level changes
   useEffect(() => {
     loadPrograms()
+    loadInterPrograms()
   }, [formData.level])
 
   const loadPrograms = async () => {
@@ -41,6 +46,50 @@ function NewAdmission() {
       setPrograms(res.data)
     }
   }
+
+  const loadInterPrograms = async () => {
+    const res = await window.api.programs.getAll('inter')
+    if (res.success) {
+      setInterPrograms(res.data)
+    }
+  }
+
+  const handleLevelToggle = (newLevel) => {
+    if (newLevel === formData.level) return
+    setFormData(prev => ({
+      ...prev,
+      level: newLevel,
+      campus: 'punjab',
+      admission_program_id: '',
+      previous_program: newLevel === 'inter' ? 'science' : '',
+      marks_9th: '',
+      marks_10th: '',
+      marks_11th: '',
+      marks_12th: '',
+      result_available: false
+    }))
+    setFee(null)
+    setPercentage(null)
+    setErrors({})
+  }
+
+  const handleCampusChange = (newCampus) => {
+    if (newCampus === formData.campus) return
+    setFormData(prev => ({
+      ...prev,
+      campus: newCampus,
+      admission_program_id: ''
+    }))
+  }
+
+  // Filter programs based on selected campus (for BS level)
+  const filteredPrograms = formData.level === 'bs'
+    ? programs.filter(p => {
+        if (formData.campus === 'punjab') return p.institute_type === 'punjab' || p.institute_type === 'both'
+        if (formData.campus === 'riahs') return p.institute_type === 'regional' || p.institute_type === 'both'
+        return true
+      })
+    : programs
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -91,24 +140,72 @@ function NewAdmission() {
     const pct = totalMarks > 0 ? (obtainedMarks / totalMarks) * 100 : 0
     setPercentage(pct)
 
-    // Fetch actual slabs from database settings
     try {
-      const res = await window.api.settings.get('fee_slabs')
-      if (res.success && Array.isArray(res.data)) {
-        const slabs = res.data.sort((a, b) => a.min - b.min)
-        for (const slab of slabs) {
-          if (pct >= slab.min && pct <= slab.max) {
-            setFee(slab.fee)
-            return
+      if (data.level === 'inter') {
+        // Inter: fetch all components
+        const [slabsRes, admissionRes, annualRes] = await Promise.all([
+          window.api.settings.get('fee_slabs'),
+          window.api.settings.get('inter_admission_fee'),
+          window.api.settings.get('inter_annual_fund')
+        ])
+
+        const admissionFee = admissionRes.success ? (admissionRes.data || 0) : 0
+        const annualFund = annualRes.success ? (annualRes.data || 0) : 0
+
+        let tuitionFee = 0
+        if (slabsRes.success && Array.isArray(slabsRes.data)) {
+          const slabs = slabsRes.data.sort((a, b) => a.min - b.min)
+          for (const slab of slabs) {
+            if (pct >= slab.min && pct <= slab.max) {
+              tuitionFee = slab.fee
+              break
+            }
+          }
+          if (tuitionFee === 0 && slabs.length > 0) {
+            tuitionFee = slabs[slabs.length - 1].fee
           }
         }
-        // Fallback to highest slab
-        setFee(slabs.length > 0 ? slabs[slabs.length - 1].fee : 0)
+
+        setFeeComponents({
+          admission_fee: admissionFee,
+          annual_fund: annualFund,
+          tuition_fee: tuitionFee
+        })
+        setFee(admissionFee + annualFund + tuitionFee)
       } else {
-        setFee(0)
+        // BS: fetch fixed components
+        const selectedProgram = programs.find(p => p.id === parseInt(data.admission_program_id))
+        const programName = selectedProgram?.name || ''
+
+        const [admissionRes, examRes, semFeeRes, semFeeItRes, itProgsRes] = await Promise.all([
+          window.api.settings.get('bs_admission_fee'),
+          window.api.settings.get('bs_inhouse_exam_fee'),
+          window.api.settings.get('bs_semester_fee'),
+          window.api.settings.get('bs_semester_fee_it'),
+          window.api.settings.get('bs_it_programs')
+        ])
+
+        const admissionFee = admissionRes.success ? (admissionRes.data || 0) : 0
+        const examFee = examRes.success ? (examRes.data || 0) : 0
+        const defaultSemFee = semFeeRes.success ? (semFeeRes.data || 45000) : 45000
+        const itSemFee = semFeeItRes.success ? (semFeeItRes.data || 50000) : 50000
+        const itPrograms = itProgsRes.success ? (itProgsRes.data || ['IT', 'CS', 'SE', 'AI']) : ['IT', 'CS', 'SE', 'AI']
+
+        const isItProgram = programName && itPrograms.some(p =>
+          programName.toLowerCase() === p.toLowerCase() ||
+          programName.toLowerCase().includes(p.toLowerCase())
+        )
+        const semesterFee = isItProgram ? itSemFee : defaultSemFee
+
+        setFeeComponents({
+          admission_fee: admissionFee,
+          inhouse_exam_fee: examFee,
+          semester_fee: semesterFee
+        })
+        setFee(admissionFee + examFee + semesterFee)
       }
     } catch (err) {
-      console.error('Failed to fetch fee slabs:', err)
+      console.error('Failed to fetch fee settings:', err)
       setFee(0)
     }
   }
@@ -118,8 +215,9 @@ function NewAdmission() {
 
     if (!formData.name.trim()) newErrors.name = 'Name is required'
     if (!formData.father_name.trim()) newErrors.father_name = "Father's name is required"
-    if (!formData.cnic.trim()) newErrors.cnic = 'CNIC/B-Form is required'
+    // CNIC/B-Form is optional now
     if (!formData.address.trim()) newErrors.address = 'Address is required'
+    if (!formData.previous_program.trim()) newErrors.previous_program = 'Previous program is required'
     if (!formData.previous_institute.trim()) newErrors.previous_institute = 'Previous institute is required'
     if (!formData.major_subjects.trim()) newErrors.major_subjects = 'Major subjects is required'
     if (!formData.admission_program_id) newErrors.admission_program_id = 'Please select a program'
@@ -179,6 +277,7 @@ function NewAdmission() {
         // Reset form
         setFormData({
           level: 'inter',
+          campus: 'punjab',
           name: '',
           father_name: '',
           cnic: '',
@@ -201,9 +300,10 @@ function NewAdmission() {
         if (printAfter) {
           // Fetch full student data for print preview
           const level = data.level
+          const instructionsKey = level === 'inter' ? 'print_instructions_inter' : 'print_instructions_bs'
           const [fullRes, settingsRes, docsRes] = await Promise.all([
             window.api.students.getById(res.data.id),
-            window.api.settings.get('print_instructions'),
+            window.api.settings.get(instructionsKey),
             window.api.settings.get(level === 'inter' ? 'documents_inter' : 'documents_bs')
           ])
           if (fullRes.success) {
@@ -252,16 +352,25 @@ function NewAdmission() {
           </div>
         )}
 
+        {/* Level Toggle */}
+        <div className="level-toggle" style={{ marginBottom: 12 }}>
+          <button
+            className={`toggle-btn ${formData.level === 'inter' ? 'active' : ''}`}
+            onClick={() => handleLevelToggle('inter')}
+          >
+            <span className="toggle-icon">🎓</span> Inter
+          </button>
+          <button
+            className={`toggle-btn ${formData.level === 'bs' ? 'active' : ''}`}
+            onClick={() => handleLevelToggle('bs')}
+          >
+            <span className="toggle-icon">📘</span> BS
+          </button>
+        </div>
+
         <div className="form-container card compact-form">
-          {/* Level + Name + Father Name */}
+          {/* Name + Father Name */}
           <div className="form-row">
-            <div className="form-group">
-              <label>Admission Level <span className="required">*</span></label>
-              <select name="level" value={formData.level} onChange={handleChange}>
-                <option value="inter">Inter Admission</option>
-                <option value="bs">BS Admission</option>
-              </select>
-            </div>
             <div className="form-group">
               <label>Full Name <span className="required">*</span></label>
               <input
@@ -274,9 +383,6 @@ function NewAdmission() {
               />
               {errors.name && <span className="field-error">{errors.name}</span>}
             </div>
-          </div>
-
-          <div className="form-row">
             <div className="form-group">
               <label>Father's Name <span className="required">*</span></label>
               <input
@@ -289,8 +395,12 @@ function NewAdmission() {
               />
               {errors.father_name && <span className="field-error">{errors.father_name}</span>}
             </div>
+          </div>
+
+          {/* CNIC + (Campus for BS / Admission Program for Inter) */}
+          <div className="form-row">
             <div className="form-group">
-              <label>CNIC / B-Form <span className="required">*</span></label>
+              <label>CNIC / B-Form</label>
               <input
                 type="text"
                 name="cnic"
@@ -301,103 +411,236 @@ function NewAdmission() {
               />
               {errors.cnic && <span className="field-error">{errors.cnic}</span>}
             </div>
+            {formData.level === 'bs' ? (
+              <div className="form-group">
+                <label>Campus <span className="required">*</span></label>
+                <div className="campus-toggle">
+                  <button
+                    type="button"
+                    className={`campus-btn ${formData.campus === 'punjab' ? 'active' : ''}`}
+                    onClick={() => handleCampusChange('punjab')}
+                  >
+                    🏛️ Punjab College
+                  </button>
+                  <button
+                    type="button"
+                    className={`campus-btn ${formData.campus === 'riahs' ? 'active' : ''}`}
+                    onClick={() => handleCampusChange('riahs')}
+                  >
+                    🏥 RIAHS
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label>Admission Program <span className="required">*</span></label>
+                <select
+                  name="admission_program_id"
+                  value={formData.admission_program_id}
+                  onChange={handleChange}
+                  className={errors.admission_program_id ? 'error' : ''}
+                >
+                  <option value="">-- Select Program --</option>
+                  {programs.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {errors.admission_program_id && <span className="field-error">{errors.admission_program_id}</span>}
+              </div>
+            )}
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Previous Program <span className="required">*</span></label>
-              <select name="previous_program" value={formData.previous_program} onChange={handleChange}>
-                <option value="science">Science</option>
-                <option value="arts">Arts</option>
-              </select>
+          {/* For BS: Admission Program row after Campus */}
+          {formData.level === 'bs' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Admission Program <span className="required">*</span></label>
+                <select
+                  name="admission_program_id"
+                  value={formData.admission_program_id}
+                  onChange={handleChange}
+                  className={errors.admission_program_id ? 'error' : ''}
+                >
+                  <option value="">-- Select Program --</option>
+                  {filteredPrograms.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {errors.admission_program_id && <span className="field-error">{errors.admission_program_id}</span>}
+              </div>
+              <div className="form-group">
+                <label>Previous Program <span className="required">*</span></label>
+                <select name="previous_program" value={formData.previous_program} onChange={handleChange}>
+                  <option value="">-- Select Previous Program --</option>
+                  {interPrograms.map((p) => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+                {errors.previous_program && <span className="field-error">{errors.previous_program}</span>}
+              </div>
             </div>
-            <div className="form-group">
-              <label>Previous Institute <span className="required">*</span></label>
-              <input
-                type="text"
-                name="previous_institute"
-                value={formData.previous_institute}
-                onChange={handleChange}
-                className={errors.previous_institute ? 'error' : ''}
-                placeholder="Name of previous institute"
-              />
-              {errors.previous_institute && <span className="field-error">{errors.previous_institute}</span>}
-            </div>
-          </div>
+          )}
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Major Subjects <span className="required">*</span></label>
-              <input
-                type="text"
-                name="major_subjects"
-                value={formData.major_subjects}
-                onChange={handleChange}
-                className={errors.major_subjects ? 'error' : ''}
-                placeholder="e.g. Physics, Chemistry, Biology"
-              />
-              {errors.major_subjects && <span className="field-error">{errors.major_subjects}</span>}
+          {/* Previous Program (Inter only) + Previous Institute (paired for Inter) */}
+          {formData.level === 'inter' ? (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Previous Program <span className="required">*</span></label>
+                <select name="previous_program" value={formData.previous_program} onChange={handleChange}>
+                  <option value="science">Science</option>
+                  <option value="arts">Arts</option>
+                </select>
+                {errors.previous_program && <span className="field-error">{errors.previous_program}</span>}
+              </div>
+              <div className="form-group">
+                <label>Previous Institute <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="previous_institute"
+                  value={formData.previous_institute}
+                  onChange={handleChange}
+                  className={errors.previous_institute ? 'error' : ''}
+                  placeholder="Name of previous institute"
+                />
+                {errors.previous_institute && <span className="field-error">{errors.previous_institute}</span>}
+              </div>
             </div>
-            <div className="form-group">
-              <label>Admission Program <span className="required">*</span></label>
-              <select
-                name="admission_program_id"
-                value={formData.admission_program_id}
-                onChange={handleChange}
-                className={errors.admission_program_id ? 'error' : ''}
-              >
-                <option value="">-- Select Program --</option>
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              {errors.admission_program_id && <span className="field-error">{errors.admission_program_id}</span>}
+          ) : (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Previous Institute <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="previous_institute"
+                  value={formData.previous_institute}
+                  onChange={handleChange}
+                  className={errors.previous_institute ? 'error' : ''}
+                  placeholder="Name of previous institute"
+                />
+                {errors.previous_institute && <span className="field-error">{errors.previous_institute}</span>}
+              </div>
+              <div className="form-group">
+                <label>Major Subjects <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="major_subjects"
+                  value={formData.major_subjects}
+                  onChange={handleChange}
+                  className={errors.major_subjects ? 'error' : ''}
+                  placeholder="e.g. Physics, Chemistry, Biology"
+                />
+                {errors.major_subjects && <span className="field-error">{errors.major_subjects}</span>}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>WhatsApp No.</label>
-              <input
-                type="text"
-                name="whatsapp_no"
-                value={formData.whatsapp_no}
-                onChange={handleChange}
-                className={errors.whatsapp_no ? 'error' : ''}
-                placeholder="03XX-XXXXXXX"
-              />
-              <span className="field-hint">Optional (but at least 1 contact required)</span>
-              {errors.whatsapp_no && <span className="field-error">{errors.whatsapp_no}</span>}
+          {/* Major Subjects (Inter only) + Address */}
+          {formData.level === 'inter' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Major Subjects <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="major_subjects"
+                  value={formData.major_subjects}
+                  onChange={handleChange}
+                  className={errors.major_subjects ? 'error' : ''}
+                  placeholder="e.g. Physics, Chemistry, Biology"
+                />
+                {errors.major_subjects && <span className="field-error">{errors.major_subjects}</span>}
+              </div>
+              <div className="form-group">
+                <label>Address <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  className={errors.address ? 'error' : ''}
+                  placeholder="Enter full address"
+                />
+                {errors.address && <span className="field-error">{errors.address}</span>}
+              </div>
             </div>
-            <div className="form-group">
-              <label>Call / SIM No.</label>
-              <input
-                type="text"
-                name="call_no"
-                value={formData.call_no}
-                onChange={handleChange}
-                className={errors.call_no ? 'error' : ''}
-                placeholder="03XX-XXXXXXX"
-              />
-              <span className="field-hint">Optional</span>
-              {errors.call_no && <span className="field-error">{errors.call_no}</span>}
-            </div>
-          </div>
+          )}
 
-          <div className="form-row">
-            <div className="form-group full-width">
-              <label>Address <span className="required">*</span></label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                className={errors.address ? 'error' : ''}
-                placeholder="Enter full address"
-                rows={2}
-              />
-              {errors.address && <span className="field-error">{errors.address}</span>}
+          {/* Address (BS only) + WhatsApp */}
+          {formData.level === 'bs' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Address <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  className={errors.address ? 'error' : ''}
+                  placeholder="Enter full address"
+                />
+                {errors.address && <span className="field-error">{errors.address}</span>}
+              </div>
+              <div className="form-group">
+                <label>WhatsApp No.</label>
+                <input
+                  type="text"
+                  name="whatsapp_no"
+                  value={formData.whatsapp_no}
+                  onChange={handleChange}
+                  className={errors.whatsapp_no ? 'error' : ''}
+                  placeholder="03XX-XXXXXXX"
+                />
+                {errors.whatsapp_no && <span className="field-error">{errors.whatsapp_no}</span>}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* WhatsApp (Inter only) + Call/SIM - paired together as user requested */}
+          {formData.level === 'inter' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>WhatsApp No.</label>
+                <input
+                  type="text"
+                  name="whatsapp_no"
+                  value={formData.whatsapp_no}
+                  onChange={handleChange}
+                  className={errors.whatsapp_no ? 'error' : ''}
+                  placeholder="03XX-XXXXXXX"
+                />
+                {errors.whatsapp_no && <span className="field-error">{errors.whatsapp_no}</span>}
+              </div>
+              <div className="form-group">
+                <label>Call / SIM No.</label>
+                <input
+                  type="text"
+                  name="call_no"
+                  value={formData.call_no}
+                  onChange={handleChange}
+                  className={errors.call_no ? 'error' : ''}
+                  placeholder="03XX-XXXXXXX"
+                />
+                {errors.call_no && <span className="field-error">{errors.call_no}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Call/SIM (BS only - alone) */}
+          {formData.level === 'bs' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Call / SIM No.</label>
+                <input
+                  type="text"
+                  name="call_no"
+                  value={formData.call_no}
+                  onChange={handleChange}
+                  className={errors.call_no ? 'error' : ''}
+                  placeholder="03XX-XXXXXXX"
+                />
+                {errors.call_no && <span className="field-error">{errors.call_no}</span>}
+              </div>
+            </div>
+          )}
 
           {/* Marks Section */}
           <div className="marks-section">
@@ -459,15 +702,32 @@ function NewAdmission() {
           </div>
 
           {/* Fee Display */}
-          {fee !== null && (
-            <div className="fee-display" style={{ marginTop: 12, padding: '12px 16px' }}>
-              <div>
-                <h3>Calculated Fee</h3>
-                {percentage !== null && (
-                  <span style={{ fontSize: 12, opacity: 0.8 }}>Based on {percentage.toFixed(1)}% marks</span>
+          {fee !== null && feeComponents && (
+            <div className="fee-display" style={{ marginTop: 12, padding: '14px 18px' }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                  {formData.level === 'inter' ? '🎓 Inter Fee Breakdown' : '📘 BS Fee Breakdown'}
+                </h3>
+                {formData.level === 'inter' ? (
+                  <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                    <div>Admission Fee: <strong>Rs. {feeComponents.admission_fee?.toLocaleString()}</strong></div>
+                    <div>Annual Fund: <strong>Rs. {feeComponents.annual_fund?.toLocaleString()}</strong></div>
+                    <div>Tuition Fee: <strong>Rs. {feeComponents.tuition_fee?.toLocaleString()}</strong>
+                      {percentage !== null && <span style={{ opacity: 0.7 }}> (based on {percentage.toFixed(1)}% marks)</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                    <div>Admission Fee: <strong>Rs. {feeComponents.admission_fee?.toLocaleString()}</strong></div>
+                    <div>In-House Exam Fee: <strong>Rs. {feeComponents.inhouse_exam_fee?.toLocaleString()}</strong></div>
+                    <div>Semester Fee: <strong>Rs. {feeComponents.semester_fee?.toLocaleString()}</strong></div>
+                  </div>
                 )}
               </div>
-              <div className="fee-amount" style={{ fontSize: 22 }}>Rs. {fee.toLocaleString()}</div>
+              <div style={{ textAlign: 'right', minWidth: 120 }}>
+                <div style={{ fontSize: 11, opacity: 0.8 }}>Total</div>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>Rs. {fee.toLocaleString()}</div>
+              </div>
             </div>
           )}
 
@@ -492,6 +752,7 @@ function NewAdmission() {
               onClick={() => {
                 setFormData({
                   level: 'inter',
+                  campus: 'punjab',
                   name: '',
                   father_name: '',
                   cnic: '',

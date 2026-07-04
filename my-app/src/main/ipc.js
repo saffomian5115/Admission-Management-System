@@ -16,6 +16,7 @@ import {
   getProgramWiseReport,
   getDashboardStats,
   logMessage,
+  getMessageLogs,
   exportStudentsToExcel,
   getDatabaseFilePath,
   backupDatabase
@@ -197,4 +198,24 @@ export function registerIpcHandlers() {
       return { success: false, error: error.message }
     }
   })
+
+  // ─── Message Handlers ───
+
+  ipcMain.handle('messages:getLogs', async (_event, studentId) => {
+    try {
+      return { success: true, data: getMessageLogs(studentId) }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('messages:log', async (_event, { studentId, type, recipient, message, status, error }) => {
+    try {
+      const result = logMessage(studentId, type, recipient, message, status, error)
+      return { success: true, data: result }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  })
 }
+

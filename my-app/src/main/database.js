@@ -38,13 +38,13 @@ export function initializeDatabase() {
       level TEXT NOT NULL CHECK(level IN ('inter', 'bs')),
       name TEXT NOT NULL,
       father_name TEXT NOT NULL,
-      cnic TEXT NOT NULL,
+      cnic TEXT DEFAULT '',
       whatsapp_no TEXT DEFAULT '',
       call_no TEXT DEFAULT '',
       address TEXT NOT NULL,
       previous_institute TEXT NOT NULL,
       major_subjects TEXT NOT NULL,
-      previous_program TEXT NOT NULL CHECK(previous_program IN ('science', 'arts')),
+      previous_program TEXT NOT NULL DEFAULT '',
       admission_program_id INTEGER,
       marks_9th INTEGER,
       marks_10th INTEGER,
@@ -54,6 +54,7 @@ export function initializeDatabase() {
       obtained_marks INTEGER DEFAULT 0,
       percentage REAL DEFAULT 0,
       fee REAL DEFAULT 0,
+      fee_breakdown TEXT DEFAULT '{}',
       documents_checklist TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT (datetime('now', 'localtime')),
       updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
@@ -80,6 +81,57 @@ export function initializeDatabase() {
     );
   `)
 
+  // Migration: handle old CHECK constraint on previous_program & add fee_breakdown if missing (if table already existed with old schema)
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info('students')").all()
+    const cnicCol = tableInfo.find(col => col.name === 'cnic')
+    const feeBreakdownCol = tableInfo.find(col => col.name === 'fee_breakdown')
+    
+    if (cnicCol && cnicCol.notnull === 1) {
+      // Old schema (cnic was NOT NULL) - recreate the table
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE students_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          level TEXT NOT NULL CHECK(level IN ('inter', 'bs')),
+          name TEXT NOT NULL,
+          father_name TEXT NOT NULL,
+          cnic TEXT DEFAULT '',
+          whatsapp_no TEXT DEFAULT '',
+          call_no TEXT DEFAULT '',
+          address TEXT NOT NULL,
+          previous_institute TEXT NOT NULL,
+          major_subjects TEXT NOT NULL,
+          previous_program TEXT NOT NULL DEFAULT '',
+          admission_program_id INTEGER,
+          marks_9th INTEGER,
+          marks_10th INTEGER,
+          marks_11th INTEGER,
+          marks_12th INTEGER,
+          total_marks INTEGER DEFAULT 0,
+          obtained_marks INTEGER DEFAULT 0,
+          percentage REAL DEFAULT 0,
+          fee REAL DEFAULT 0,
+          fee_breakdown TEXT DEFAULT '{}',
+          documents_checklist TEXT DEFAULT '[]',
+          created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+          updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
+          FOREIGN KEY (admission_program_id) REFERENCES programs(id)
+        );
+        INSERT INTO students_new SELECT * FROM students;
+        DROP TABLE students;
+        ALTER TABLE students_new RENAME TO students;
+        PRAGMA foreign_keys = ON;
+      `)
+    } else if (!feeBreakdownCol) {
+      // Newer schema exists but fee_breakdown column is missing - add it
+      db.exec("ALTER TABLE students ADD COLUMN fee_breakdown TEXT DEFAULT '{}'")
+    }
+  } catch (e) {
+    // Migration might fail if columns don't match, but that's ok
+    console.error('Migration error (non-fatal):', e.message)
+  }
+
   // Seed default settings if not exist
   const defaultSettings = [
     {
@@ -93,28 +145,63 @@ export function initializeDatabase() {
       ])
     },
     {
+      key: 'inter_admission_fee',
+      value: JSON.stringify(5000)
+    },
+    {
+      key: 'inter_annual_fund',
+      value: JSON.stringify(2000)
+    },
+    {
+      key: 'bs_admission_fee',
+      value: JSON.stringify(3000)
+    },
+    {
+      key: 'bs_inhouse_exam_fee',
+      value: JSON.stringify(1000)
+    },
+    {
+      key: 'bs_semester_fee',
+      value: JSON.stringify(45000)
+    },
+    {
+      key: 'bs_semester_fee_it',
+      value: JSON.stringify(50000)
+    },
+    {
+      key: 'bs_it_programs',
+      value: JSON.stringify(['IT', 'CS', 'SE', 'AI'])
+    },
+    {
       key: 'documents_inter',
       value: JSON.stringify([
-        'Matric Certificate',
-        'CNIC / B-Form Copy',
-        '2 Passport Size Photos',
-        'Domicile Copy'
+        { name: '10th Result Card Copy (if have), otherwise 9th Result Card Copy and 10th Roll Number Slip Copy', quantity: 1 },
+        { name: 'Photographs (Passport Size, Blue Background) Without Attestation', quantity: 4 },
+        { name: 'Photocopy of CNIC or Bay Form of Student', quantity: 1 },
+        { name: 'Photocopy of CNIC of Father/Guardian', quantity: 1 }
       ])
     },
     {
       key: 'documents_bs',
       value: JSON.stringify([
-        'Intermediate Certificate',
-        'CNIC / B-Form Copy',
-        '2 Passport Size Photos',
-        'Domicile Copy',
-        'Previous Marks Sheet'
+        { name: 'Photocopy of 10th Result Card', quantity: 1 },
+        { name: 'Photocopy of 2nd Year Result Card', quantity: 2 },
+        { name: 'Photographs (Passport Size, Blue Background)', quantity: 8 },
+        { name: 'Photocopy of CNIC/Bay Form of Student', quantity: 2 },
+        { name: 'Photocopy of CNIC of Father/Guardian', quantity: 1 },
+        { name: 'NOC Required (in case of any other than BISE Multan)', quantity: 1 }
       ])
     },
     {
-      key: 'print_instructions',
+      key: 'print_instructions_inter',
       value: JSON.stringify(
-        'This is a computer-generated document. No signature required.\nPlease report to the institute within 7 days with all original documents.'
+        'Dues, once paid, are not refundable/ adjustable in any case.\nCollege fees will be revised with a 10% increment.'
+      )
+    },
+    {
+      key: 'print_instructions_bs',
+      value: JSON.stringify(
+        'Prospectus / Admission Form price: Rs.6000\nUniversity Registration fee is separately charged according to UNI Schedule only in 1st Semester.\nUniversity Examination fee each semester is separate according to UNI Schedule.\nIn House Exam fee each Semester separately charged Rs.2000/- (may vary according to applicable Policy)\nDues, once paid, are not refundable/ adjustable in any case.\nSemester Fee may change in next semesters according to Credit Hours / Head Office policy.\nSemester full fee must be clear before Mid Term Exam'
       )
     },
     {
@@ -133,6 +220,87 @@ export function initializeDatabase() {
     insertSetting.run(setting.key, setting.value)
   }
 
+  // Migration: ensure DIT and F.A (IT) programs exist for Inter level
+  const ditProgram = db.prepare("SELECT id FROM programs WHERE name = 'DIT' AND level = 'inter'").get()
+  if (!ditProgram) {
+    db.prepare("INSERT INTO programs (name, level, institute_type, institute_name) VALUES ('DIT', 'inter', 'punjab', 'Punjab College Mian Channu')").run()
+  }
+  const faItProgram = db.prepare("SELECT id FROM programs WHERE name = 'F.A (IT)' AND level = 'inter'").get()
+  if (!faItProgram) {
+    db.prepare("INSERT INTO programs (name, level, institute_type, institute_name) VALUES ('F.A (IT)', 'inter', 'punjab', 'Punjab College Mian Channu')").run()
+  }
+
+  // Migration: ensure RIAHS BS programs exist
+  const riahsPrograms = [
+    'BS MLT', 'HND', 'Biotechnology', 'Zoology', 'English',
+    'AI', 'CS', 'IT', 'SE', 'ADS-CS'
+  ]
+  const insertRiahsProgram = db.prepare(
+    "INSERT OR IGNORE INTO programs (name, level, institute_type, institute_name) VALUES (?, 'bs', 'regional', 'Regional Institute of Allied Health Science')"
+  )
+  for (const progName of riahsPrograms) {
+    const existing = db.prepare("SELECT id FROM programs WHERE name = ? AND level = 'bs'").get(progName)
+    if (!existing) {
+      insertRiahsProgram.run(progName)
+    }
+  }
+
+  // Update existing BS programs (B.S. Computer Science & B.S. Business Administration) to have institute_type = 'both'
+  db.prepare("UPDATE programs SET institute_type = 'both' WHERE level = 'bs' AND institute_type = 'punjab'").run()
+
+  // Migration: update existing documents_inter and documents_bs to new format
+  const oldDocsInter = db.prepare("SELECT value FROM settings WHERE key = 'documents_inter'").get()
+  if (oldDocsInter) {
+    const oldVal = JSON.parse(oldDocsInter.value)
+    // Check if it's the old string format (not {name, quantity} objects)
+    if (oldVal.length > 0 && typeof oldVal[0] === 'string') {
+      db.prepare(`
+        UPDATE settings SET value = ?, updated_at = datetime('now', 'localtime')
+        WHERE key = 'documents_inter'
+      `).run(JSON.stringify([
+        { name: '10th Result Card Copy (if have), otherwise 9th Result Card Copy and 10th Roll Number Slip Copy', quantity: 1 },
+        { name: 'Photographs (Passport Size, Blue Background) Without Attestation', quantity: 4 },
+        { name: 'Photocopy of CNIC or Bay Form of Student', quantity: 1 },
+        { name: 'Photocopy of CNIC of Father/Guardian', quantity: 1 }
+      ]))
+    }
+  }
+
+  const oldDocsBs = db.prepare("SELECT value FROM settings WHERE key = 'documents_bs'").get()
+  if (oldDocsBs) {
+    const oldVal = JSON.parse(oldDocsBs.value)
+    if (oldVal.length > 0 && typeof oldVal[0] === 'string') {
+      db.prepare(`
+        UPDATE settings SET value = ?, updated_at = datetime('now', 'localtime')
+        WHERE key = 'documents_bs'
+      `).run(JSON.stringify([
+        { name: 'Photocopy of 10th Result Card', quantity: 1 },
+        { name: 'Photocopy of 2nd Year Result Card', quantity: 2 },
+        { name: 'Photographs (Passport Size, Blue Background)', quantity: 8 },
+        { name: 'Photocopy of CNIC/Bay Form of Student', quantity: 2 },
+        { name: 'Photocopy of CNIC of Father/Guardian', quantity: 1 },
+        { name: 'NOC Required (in case of any other than BISE Multan)', quantity: 1 }
+      ]))
+    }
+  }
+
+  // Migration: ensure Punjab College ADP BS programs exist (added after 'both' update so they stay as 'punjab')
+  const adpPrograms = [
+    'Artificial Intelligence', 'Cyber Security', 'Software Engineering', 'Data Science',
+    'Computer Science', 'Business Administration', 'Business Analytics', 'Accounting and Finance',
+    'Culinary Arts', 'Biotechnology', 'Psychology', 'Biochemistry', 'Chemistry',
+    'Zoology', 'Botany', 'Physics', 'Mathematics', 'English'
+  ]
+  const insertAdpProgram = db.prepare(
+    "INSERT OR IGNORE INTO programs (name, level, institute_type, institute_name) VALUES (?, 'bs', 'punjab', 'Punjab College Mian Channu')"
+  )
+  for (const progName of adpPrograms) {
+    const existing = db.prepare("SELECT id FROM programs WHERE name = ? AND level = 'bs'").get(progName)
+    if (!existing) {
+      insertAdpProgram.run(progName)
+    }
+  }
+
   // Seed default programs if empty
   const programCount = db.prepare('SELECT COUNT(*) as count FROM programs').get()
   if (programCount.count === 0) {
@@ -145,8 +313,28 @@ export function initializeDatabase() {
       ['F.Sc Pre-Engineering', 'inter', 'punjab', 'Punjab College Mian Channu'],
       ['ICS', 'inter', 'punjab', 'Punjab College Mian Channu'],
       ['I.Com', 'inter', 'punjab', 'Punjab College Mian Channu'],
+      ['DIT', 'inter', 'punjab', 'Punjab College Mian Channu'],
+      ['F.A (IT)', 'inter', 'punjab', 'Punjab College Mian Channu'],
       ['B.S. Computer Science', 'bs', 'both', 'Punjab College Mian Channu & Regional Institute'],
-      ['B.S. Business Administration', 'bs', 'both', 'Punjab College Mian Channu & Regional Institute']
+      ['B.S. Business Administration', 'bs', 'both', 'Punjab College Mian Channu & Regional Institute'],
+      ['Artificial Intelligence', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Cyber Security', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Software Engineering', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Data Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Business Analytics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Accounting and Finance', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Culinary Arts', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Psychology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Biochemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Chemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Zoology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Botany', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Physics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Mathematics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Computer Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Business Administration', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['Biotechnology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['English', 'bs', 'punjab', 'Punjab College Mian Channu']
     ]
 
     for (const prog of defaultPrograms) {
@@ -185,17 +373,29 @@ export function getAllStudents(filters = {}) {
     ORDER BY s.created_at DESC
   `
 
-  return db.prepare(query).all(...params)
+  const students = db.prepare(query).all(...params)
+  // Parse JSON fields
+  return students.map(s => ({
+    ...s,
+    fee_breakdown: typeof s.fee_breakdown === 'string' ? JSON.parse(s.fee_breakdown) : (s.fee_breakdown || {}),
+    documents_checklist: typeof s.documents_checklist === 'string' ? JSON.parse(s.documents_checklist) : (s.documents_checklist || [])
+  }))
 }
 
 export function getStudentById(id) {
   const db = getDatabase()
-  return db.prepare(`
+  const student = db.prepare(`
     SELECT s.*, p.name as program_name, p.institute_type, p.institute_name
     FROM students s
     LEFT JOIN programs p ON s.admission_program_id = p.id
     WHERE s.id = ?
   `).get(id)
+  if (!student) return null
+  return {
+    ...student,
+    fee_breakdown: typeof student.fee_breakdown === 'string' ? JSON.parse(student.fee_breakdown) : (student.fee_breakdown || {}),
+    documents_checklist: typeof student.documents_checklist === 'string' ? JSON.parse(student.documents_checklist) : (student.documents_checklist || [])
+  }
 }
 
 export function createStudent(data) {
@@ -231,16 +431,25 @@ export function createStudent(data) {
 
   const percentage = totalMarks > 0 ? (obtainedMarks / totalMarks) * 100 : 0
 
-  // Calculate fee based on slabs
-  const fee = calculateFee(percentage)
+  // Get program name for BS semester fee calculation
+  let programName = ''
+  if (data.admission_program_id) {
+    const prog = db.prepare('SELECT name FROM programs WHERE id = ?').get(data.admission_program_id)
+    if (prog) programName = prog.name
+  }
+
+  // Calculate fee using new multi-component structure
+  const feeResult = calculateFee(data.level, percentage, programName)
+  const fee = feeResult.total
+  const feeBreakdown = JSON.stringify(feeResult.components)
 
   const stmt = db.prepare(`
     INSERT INTO students (
       level, name, father_name, cnic, whatsapp_no, call_no,
       address, previous_institute, major_subjects, previous_program,
       admission_program_id, marks_9th, marks_10th, marks_11th, marks_12th,
-      total_marks, obtained_marks, percentage, fee, documents_checklist
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      total_marks, obtained_marks, percentage, fee, fee_breakdown, documents_checklist
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   const result = stmt.run(
@@ -263,10 +472,11 @@ export function createStudent(data) {
     obtainedMarks,
     percentage,
     fee,
+    feeBreakdown,
     JSON.stringify(data.documents_checklist || [])
   )
 
-  return { id: result.lastInsertRowid, fee, percentage, totalMarks, obtainedMarks }
+  return { id: result.lastInsertRowid, fee, percentage, totalMarks, obtainedMarks, feeBreakdown }
 }
 
 export function updateStudent(id, data) {
@@ -301,7 +511,17 @@ export function updateStudent(id, data) {
   }
 
   const percentage = totalMarks > 0 ? (obtainedMarks / totalMarks) * 100 : 0
-  const fee = calculateFee(percentage)
+
+  // Get program name for BS semester fee calculation
+  let programName = ''
+  if (data.admission_program_id) {
+    const prog = db.prepare('SELECT name FROM programs WHERE id = ?').get(data.admission_program_id)
+    if (prog) programName = prog.name
+  }
+
+  const feeResult = calculateFee(data.level, percentage, programName)
+  const fee = feeResult.total
+  const feeBreakdown = JSON.stringify(feeResult.components)
 
   const stmt = db.prepare(`
     UPDATE students SET
@@ -310,7 +530,7 @@ export function updateStudent(id, data) {
       previous_program = ?, admission_program_id = ?,
       marks_9th = ?, marks_10th = ?, marks_11th = ?, marks_12th = ?,
       total_marks = ?, obtained_marks = ?, percentage = ?, fee = ?,
-      documents_checklist = ?, updated_at = datetime('now', 'localtime')
+      fee_breakdown = ?, documents_checklist = ?, updated_at = datetime('now', 'localtime')
     WHERE id = ?
   `)
 
@@ -334,6 +554,7 @@ export function updateStudent(id, data) {
     obtainedMarks,
     percentage,
     fee,
+    feeBreakdown,
     JSON.stringify(data.documents_checklist || []),
     id
   )
@@ -348,23 +569,71 @@ export function deleteStudent(id) {
 
 // ─── Fee Calculation ───
 
-export function calculateFee(percentage) {
+export function calculateFee(level, percentage, programName = '') {
   const db = getDatabase()
-  const setting = db.prepare("SELECT value FROM settings WHERE key = 'fee_slabs'").get()
-  if (!setting) return 0
 
-  const slabs = JSON.parse(setting.value)
-  // Slabs sorted by min asc
-  slabs.sort((a, b) => a.min - b.min)
+  if (level === 'inter') {
+    // Inter: Admission Fee + Annual Fund + Tuition Fee (marks-based)
+    const admissionSetting = db.prepare("SELECT value FROM settings WHERE key = 'inter_admission_fee'").get()
+    const annualSetting = db.prepare("SELECT value FROM settings WHERE key = 'inter_annual_fund'").get()
+    const slabsSetting = db.prepare("SELECT value FROM settings WHERE key = 'fee_slabs'").get()
 
-  for (const slab of slabs) {
-    if (percentage >= slab.min && percentage <= slab.max) {
-      return slab.fee
+    const admissionFee = admissionSetting ? JSON.parse(admissionSetting.value) : 0
+    const annualFund = annualSetting ? JSON.parse(annualSetting.value) : 0
+
+    let tuitionFee = 0
+    if (slabsSetting) {
+      const slabs = JSON.parse(slabsSetting.value)
+      slabs.sort((a, b) => a.min - b.min)
+      for (const slab of slabs) {
+        if (percentage >= slab.min && percentage <= slab.max) {
+          tuitionFee = slab.fee
+          break
+        }
+      }
+      if (tuitionFee === 0 && slabs.length > 0) {
+        tuitionFee = slabs[slabs.length - 1].fee
+      }
+    }
+
+    return {
+      total: admissionFee + annualFund + tuitionFee,
+      components: {
+        admission_fee: admissionFee,
+        annual_fund: annualFund,
+        tuition_fee: tuitionFee
+      }
+    }
+  } else {
+    // BS: Admission Fee + In-House Exam Fee + Semester Fee (fixed by program)
+    const admissionSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_admission_fee'").get()
+    const examSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_inhouse_exam_fee'").get()
+    const semFeeSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_semester_fee'").get()
+    const semFeeItSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_semester_fee_it'").get()
+    const itProgsSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_it_programs'").get()
+
+    const admissionFee = admissionSetting ? JSON.parse(admissionSetting.value) : 0
+    const examFee = examSetting ? JSON.parse(examSetting.value) : 0
+    const defaultSemFee = semFeeSetting ? JSON.parse(semFeeSetting.value) : 45000
+    const itSemFee = semFeeItSetting ? JSON.parse(semFeeItSetting.value) : 50000
+    const itPrograms = itProgsSetting ? JSON.parse(itProgsSetting.value) : ['IT', 'CS', 'SE', 'AI']
+
+    // Check if the program is an IT program
+    const isItProgram = programName && itPrograms.some(p =>
+      programName.toLowerCase() === p.toLowerCase() ||
+      programName.toLowerCase().includes(p.toLowerCase())
+    )
+    const semesterFee = isItProgram ? itSemFee : defaultSemFee
+
+    return {
+      total: admissionFee + examFee + semesterFee,
+      components: {
+        admission_fee: admissionFee,
+        inhouse_exam_fee: examFee,
+        semester_fee: semesterFee
+      }
     }
   }
-
-  // Fallback: highest slab
-  return slabs.length > 0 ? slabs[slabs.length - 1].fee : 0
 }
 
 // ─── Programs CRUD ───
@@ -514,6 +783,26 @@ export function logMessage(studentId, type, recipient, message, status, error = 
   ).run(studentId, type, recipient, message, status, error)
 }
 
+export function getMessageLogs(studentId = null) {
+  const db = getDatabase()
+  if (studentId) {
+    return db.prepare(`
+      SELECT ml.*, s.name as student_name
+      FROM message_logs ml
+      LEFT JOIN (SELECT id, name FROM students) s ON ml.student_id = s.id
+      WHERE ml.student_id = ?
+      ORDER BY ml.created_at DESC
+    `).all(studentId)
+  }
+  return db.prepare(`
+    SELECT ml.*, s.name as student_name
+    FROM message_logs ml
+    LEFT JOIN (SELECT id, name FROM students) s ON ml.student_id = s.id
+    ORDER BY ml.created_at DESC
+    LIMIT 100
+  `).all()
+}
+
 // ─── Excel Export ───
 
 export function exportStudentsToExcel(filePath) {
@@ -528,8 +817,7 @@ export function exportStudentsToExcel(filePath) {
     'Call No': s.call_no || '',
     'Address': s.address,
     'Level': s.level === 'inter' ? 'Inter' : 'BS',
-    'Program': s.program_name || 'N/A',
-    'Previous Program': s.previous_program === 'science' ? 'Science' : 'Arts',
+    'Program': s.program_name || 'N/A',      'Previous Program': s.previous_program === 'science' ? 'Science' : s.previous_program === 'arts' ? 'Arts' : s.previous_program || '',
     'Previous Institute': s.previous_institute,
     'Major Subjects': s.major_subjects,
     '9th Marks': s.marks_9th || '',
