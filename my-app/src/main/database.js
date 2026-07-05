@@ -162,15 +162,7 @@ export function initializeDatabase() {
     },
     {
       key: 'bs_semester_fee',
-      value: JSON.stringify(45000)
-    },
-    {
-      key: 'bs_semester_fee_it',
       value: JSON.stringify(50000)
-    },
-    {
-      key: 'bs_it_programs',
-      value: JSON.stringify(['IT', 'CS', 'SE', 'AI'])
     },
     {
       key: 'documents_inter',
@@ -220,29 +212,43 @@ export function initializeDatabase() {
     insertSetting.run(setting.key, setting.value)
   }
 
-  // Migration: ensure DIT and F.A (IT) programs exist for Inter level
-  const ditProgram = db.prepare("SELECT id FROM programs WHERE name = 'DIT' AND level = 'inter'").get()
-  if (!ditProgram) {
-    db.prepare("INSERT INTO programs (name, level, institute_type, institute_name) VALUES ('DIT', 'inter', 'punjab', 'Punjab College Mian Channu')").run()
-  }
-  const faItProgram = db.prepare("SELECT id FROM programs WHERE name = 'F.A (IT)' AND level = 'inter'").get()
-  if (!faItProgram) {
-    db.prepare("INSERT INTO programs (name, level, institute_type, institute_name) VALUES ('F.A (IT)', 'inter', 'punjab', 'Punjab College Mian Channu')").run()
+  // Migration: ensure all Inter programs exist (total 6)
+  const interProgramNames = ['F.Sc Pre-Medical', 'F.Sc Pre-Engineering', 'ICS', 'I.Com', 'DIT', 'F.A (IT)']
+  const insertInterProgram = db.prepare(
+    "INSERT OR IGNORE INTO programs (name, level, institute_type, institute_name) VALUES (?, 'inter', 'punjab', 'Punjab College Mian Channu')"
+  )
+  for (const progName of interProgramNames) {
+    const existing = db.prepare("SELECT id FROM programs WHERE name = ? AND level = 'inter'").get(progName)
+    if (!existing) {
+      insertInterProgram.run(progName)
+    }
   }
 
-  // Migration: ensure RIAHS BS programs exist
-  const riahsPrograms = [
-    'BS MLT', 'HND', 'Biotechnology', 'Zoology', 'English',
-    'AI', 'CS', 'IT', 'SE', 'ADS-CS'
+  // Migration: rename old RIAHS programs to proper names FIRST (before inserting new names to avoid duplicates)
+  const riahsNamings = {
+    'HND': 'BS HND',
+    'Biotechnology': 'BS Biotechnology',
+    'Zoology': 'BS Zoology',
+    'English': 'BS English',
+    'AI': 'BS AI',
+    'CS': 'BSCS',
+    'IT': 'BSIT',
+    'SE': 'BS SE'
+  }
+  for (const [oldName, newName] of Object.entries(riahsNamings)) {
+    db.prepare("UPDATE programs SET name = ? WHERE name = ? AND level = 'bs' AND institute_type = 'regional'").run(newName, oldName)
+  }
+
+  // Migration: ensure all new RIAHS BS program names exist (INSERT OR IGNORE skips if rename already created them)
+  const riahsProgramNames = [
+    'BS MLT', 'BS HND', 'BS Biotechnology', 'BS Zoology', 'BS English',
+    'BS AI', 'BSCS', 'BSIT', 'BS SE', 'ADS-CS'
   ]
   const insertRiahsProgram = db.prepare(
     "INSERT OR IGNORE INTO programs (name, level, institute_type, institute_name) VALUES (?, 'bs', 'regional', 'Regional Institute of Allied Health Science')"
   )
-  for (const progName of riahsPrograms) {
-    const existing = db.prepare("SELECT id FROM programs WHERE name = ? AND level = 'bs'").get(progName)
-    if (!existing) {
-      insertRiahsProgram.run(progName)
-    }
+  for (const progName of riahsProgramNames) {
+    insertRiahsProgram.run(progName)
   }
 
   // Update existing BS programs (B.S. Computer Science & B.S. Business Administration) to have institute_type = 'both'
@@ -284,21 +290,48 @@ export function initializeDatabase() {
     }
   }
 
-  // Migration: ensure Punjab College ADP BS programs exist (added after 'both' update so they stay as 'punjab')
-  const adpPrograms = [
-    'Artificial Intelligence', 'Cyber Security', 'Software Engineering', 'Data Science',
-    'Computer Science', 'Business Administration', 'Business Analytics', 'Accounting and Finance',
-    'Culinary Arts', 'Biotechnology', 'Psychology', 'Biochemistry', 'Chemistry',
-    'Zoology', 'Botany', 'Physics', 'Mathematics', 'English'
+  // Migration: rename old Punjab College BS programs to have ADP prefix FIRST (before inserting new names to avoid duplicates)
+  const adpNamings = {
+    'Artificial Intelligence': 'ADP Artificial Intelligence',
+    'Cyber Security': 'ADP Cyber Security',
+    'Software Engineering': 'ADP Software Engineering',
+    'Data Science': 'ADP Data Science',
+    'Computer Science': 'ADP Computer Science',
+    'Business Administration': 'ADP Business Administration',
+    'Business Analytics': 'ADP Business Analytics',
+    'Accounting and Finance': 'ADP Accounting and Finance',
+    'Culinary Arts': 'ADP Culinary Arts',
+    'Biotechnology': 'ADP Biotechnology',
+    'Psychology': 'ADP Psychology',
+    'Biochemistry': 'ADP Biochemistry',
+    'Chemistry': 'ADP Chemistry',
+    'Zoology': 'ADP Zoology',
+    'Botany': 'ADP Botany',
+    'Physics': 'ADP Physics',
+    'Mathematics': 'ADP Mathematics',
+    'English': 'ADP English',
+    'B.S. Computer Science': 'ADP Computer Science',
+    'B.S. Business Administration': 'ADP Business Administration'
+  }
+  for (const [oldName, newName] of Object.entries(adpNamings)) {
+    db.prepare("UPDATE programs SET name = ? WHERE name = ? AND level = 'bs' AND (institute_type = 'punjab' OR institute_type = 'both')").run(newName, oldName)
+  }
+
+  // Also update 'both' type programs to 'punjab' since RIAHS now has its own separate programs
+  db.prepare("UPDATE programs SET institute_type = 'punjab' WHERE name LIKE 'ADP %' AND level = 'bs' AND institute_type = 'both'").run()
+
+  // Migration: ensure Punjab College ADP BS programs exist (INSERT OR IGNORE skips if rename already created them)
+  const adpProgramNames = [
+    'ADP Artificial Intelligence', 'ADP Cyber Security', 'ADP Software Engineering', 'ADP Data Science',
+    'ADP Computer Science', 'ADP Business Administration', 'ADP Business Analytics', 'ADP Accounting and Finance',
+    'ADP Culinary Arts', 'ADP Biotechnology', 'ADP Psychology', 'ADP Biochemistry', 'ADP Chemistry',
+    'ADP Zoology', 'ADP Botany', 'ADP Physics', 'ADP Mathematics', 'ADP English'
   ]
   const insertAdpProgram = db.prepare(
     "INSERT OR IGNORE INTO programs (name, level, institute_type, institute_name) VALUES (?, 'bs', 'punjab', 'Punjab College Mian Channu')"
   )
-  for (const progName of adpPrograms) {
-    const existing = db.prepare("SELECT id FROM programs WHERE name = ? AND level = 'bs'").get(progName)
-    if (!existing) {
-      insertAdpProgram.run(progName)
-    }
+  for (const progName of adpProgramNames) {
+    insertAdpProgram.run(progName)
   }
 
   // Seed default programs if empty
@@ -315,26 +348,24 @@ export function initializeDatabase() {
       ['I.Com', 'inter', 'punjab', 'Punjab College Mian Channu'],
       ['DIT', 'inter', 'punjab', 'Punjab College Mian Channu'],
       ['F.A (IT)', 'inter', 'punjab', 'Punjab College Mian Channu'],
-      ['B.S. Computer Science', 'bs', 'both', 'Punjab College Mian Channu & Regional Institute'],
-      ['B.S. Business Administration', 'bs', 'both', 'Punjab College Mian Channu & Regional Institute'],
-      ['Artificial Intelligence', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Cyber Security', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Software Engineering', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Data Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Business Analytics', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Accounting and Finance', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Culinary Arts', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Psychology', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Biochemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Chemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Zoology', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Botany', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Physics', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Mathematics', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Computer Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Business Administration', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['Biotechnology', 'bs', 'punjab', 'Punjab College Mian Channu'],
-      ['English', 'bs', 'punjab', 'Punjab College Mian Channu']
+      ['ADP Computer Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Business Administration', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Artificial Intelligence', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Cyber Security', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Software Engineering', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Data Science', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Business Analytics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Accounting and Finance', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Culinary Arts', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Psychology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Biochemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Chemistry', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Zoology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Botany', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Physics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Mathematics', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP Biotechnology', 'bs', 'punjab', 'Punjab College Mian Channu'],
+      ['ADP English', 'bs', 'punjab', 'Punjab College Mian Channu']
     ]
 
     for (const prog of defaultPrograms) {
@@ -438,10 +469,16 @@ export function createStudent(data) {
     if (prog) programName = prog.name
   }
 
-  // Calculate fee using new multi-component structure
-  const feeResult = calculateFee(data.level, percentage, programName)
-  const fee = feeResult.total
-  const feeBreakdown = JSON.stringify(feeResult.components)
+  // Calculate fee — use custom fee if provided, otherwise auto-calculate
+  let fee, feeBreakdown
+  if (data.fee !== undefined && data.fee !== null) {
+    fee = parseFloat(data.fee) || 0
+    feeBreakdown = JSON.stringify(data.fee_breakdown || {})
+  } else {
+    const feeResult = calculateFee(data.level, percentage, programName)
+    fee = feeResult.total
+    feeBreakdown = JSON.stringify(feeResult.components)
+  }
 
   const stmt = db.prepare(`
     INSERT INTO students (
@@ -519,9 +556,16 @@ export function updateStudent(id, data) {
     if (prog) programName = prog.name
   }
 
-  const feeResult = calculateFee(data.level, percentage, programName)
-  const fee = feeResult.total
-  const feeBreakdown = JSON.stringify(feeResult.components)
+  // Calculate fee — use custom fee if provided, otherwise auto-calculate
+  let fee, feeBreakdown
+  if (data.fee !== undefined && data.fee !== null) {
+    fee = parseFloat(data.fee) || 0
+    feeBreakdown = JSON.stringify(data.fee_breakdown || {})
+  } else {
+    const feeResult = calculateFee(data.level, percentage, programName)
+    fee = feeResult.total
+    feeBreakdown = JSON.stringify(feeResult.components)
+  }
 
   const stmt = db.prepare(`
     UPDATE students SET
@@ -605,25 +649,14 @@ export function calculateFee(level, percentage, programName = '') {
       }
     }
   } else {
-    // BS: Admission Fee + In-House Exam Fee + Semester Fee (fixed by program)
+    // BS: Admission Fee + In-House Exam Fee + Semester Fee (single for all programs)
     const admissionSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_admission_fee'").get()
     const examSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_inhouse_exam_fee'").get()
     const semFeeSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_semester_fee'").get()
-    const semFeeItSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_semester_fee_it'").get()
-    const itProgsSetting = db.prepare("SELECT value FROM settings WHERE key = 'bs_it_programs'").get()
 
     const admissionFee = admissionSetting ? JSON.parse(admissionSetting.value) : 0
     const examFee = examSetting ? JSON.parse(examSetting.value) : 0
-    const defaultSemFee = semFeeSetting ? JSON.parse(semFeeSetting.value) : 45000
-    const itSemFee = semFeeItSetting ? JSON.parse(semFeeItSetting.value) : 50000
-    const itPrograms = itProgsSetting ? JSON.parse(itProgsSetting.value) : ['IT', 'CS', 'SE', 'AI']
-
-    // Check if the program is an IT program
-    const isItProgram = programName && itPrograms.some(p =>
-      programName.toLowerCase() === p.toLowerCase() ||
-      programName.toLowerCase().includes(p.toLowerCase())
-    )
-    const semesterFee = isItProgram ? itSemFee : defaultSemFee
+    const semesterFee = semFeeSetting ? JSON.parse(semFeeSetting.value) : 50000
 
     return {
       total: admissionFee + examFee + semesterFee,

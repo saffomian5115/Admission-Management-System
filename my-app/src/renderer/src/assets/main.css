@@ -618,8 +618,9 @@ body {
 /* ─── Fee Display ─── */
 
 .fee-display {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
+  background: #f8faff;
+  border: 1.5px solid #e0e7ff;
+  color: #333;
   padding: 16px 20px;
   border-radius: 10px;
   margin-top: 16px;
@@ -630,13 +631,53 @@ body {
 
 .fee-display h3 {
   font-size: 14px;
-  font-weight: 500;
-  opacity: 0.9;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 8px;
 }
 
 .fee-display .fee-amount {
   font-size: 28px;
   font-weight: 800;
+}
+
+.fee-component-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.fee-component-row span {
+  min-width: 120px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+}
+
+.fee-component-input {
+  width: 110px;
+  padding: 4px 8px;
+  border: 1.5px solid #c5cae9;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: right;
+  background: #fff;
+  transition: all 0.2s;
+  color: #333;
+}
+
+.fee-component-input:focus {
+  outline: none;
+  border-color: #4facfe;
+  box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.15);
+  background: #fff;
+}
+
+.fee-component-input:hover {
+  border-color: #9fa8da;
 }
 
 /* ─── Toast Notification ─── */

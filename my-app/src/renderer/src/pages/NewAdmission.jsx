@@ -69,6 +69,7 @@ function NewAdmission() {
       result_available: false
     }))
     setFee(null)
+    setFeeComponents(null)
     setPercentage(null)
     setErrors({})
   }
@@ -93,6 +94,7 @@ function NewAdmission() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+
     const newValue = type === 'checkbox' ? checked : value
     setFormData((prev) => {
       return { ...prev, [name]: newValue }
@@ -101,6 +103,14 @@ function NewAdmission() {
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: null }))
     }
+  }
+
+  // Handle changes to individual fee components
+  const handleFeeComponentChange = (key, value) => {
+    const newComponents = { ...feeComponents, [key]: parseFloat(value) || 0 }
+    setFeeComponents(newComponents)
+    const total = Object.values(newComponents).reduce((sum, val) => sum + (parseFloat(val) || 0), 0)
+    setFee(total)
   }
 
   // Auto-calculate fee when marks-related fields change
@@ -171,38 +181,27 @@ function NewAdmission() {
           annual_fund: annualFund,
           tuition_fee: tuitionFee
         })
-        setFee(admissionFee + annualFund + tuitionFee)
+        const totalFee = admissionFee + annualFund + tuitionFee
+        setFee(totalFee)
       } else {
         // BS: fetch fixed components
-        const selectedProgram = programs.find(p => p.id === parseInt(data.admission_program_id))
-        const programName = selectedProgram?.name || ''
-
-        const [admissionRes, examRes, semFeeRes, semFeeItRes, itProgsRes] = await Promise.all([
+        const [admissionRes, examRes, semFeeRes] = await Promise.all([
           window.api.settings.get('bs_admission_fee'),
           window.api.settings.get('bs_inhouse_exam_fee'),
-          window.api.settings.get('bs_semester_fee'),
-          window.api.settings.get('bs_semester_fee_it'),
-          window.api.settings.get('bs_it_programs')
+          window.api.settings.get('bs_semester_fee')
         ])
 
         const admissionFee = admissionRes.success ? (admissionRes.data || 0) : 0
         const examFee = examRes.success ? (examRes.data || 0) : 0
-        const defaultSemFee = semFeeRes.success ? (semFeeRes.data || 45000) : 45000
-        const itSemFee = semFeeItRes.success ? (semFeeItRes.data || 50000) : 50000
-        const itPrograms = itProgsRes.success ? (itProgsRes.data || ['IT', 'CS', 'SE', 'AI']) : ['IT', 'CS', 'SE', 'AI']
-
-        const isItProgram = programName && itPrograms.some(p =>
-          programName.toLowerCase() === p.toLowerCase() ||
-          programName.toLowerCase().includes(p.toLowerCase())
-        )
-        const semesterFee = isItProgram ? itSemFee : defaultSemFee
+        const semesterFee = semFeeRes.success ? (semFeeRes.data || 50000) : 50000
 
         setFeeComponents({
           admission_fee: admissionFee,
           inhouse_exam_fee: examFee,
           semester_fee: semesterFee
         })
-        setFee(admissionFee + examFee + semesterFee)
+        const totalFee = admissionFee + examFee + semesterFee
+        setFee(totalFee)
       }
     } catch (err) {
       console.error('Failed to fetch fee settings:', err)
@@ -263,7 +262,9 @@ function NewAdmission() {
         marks_9th: formData.marks_9th ? parseInt(formData.marks_9th) : null,
         marks_10th: formData.marks_10th ? parseInt(formData.marks_10th) : null,
         marks_11th: formData.marks_11th ? parseInt(formData.marks_11th) : null,
-        marks_12th: formData.marks_12th ? parseInt(formData.marks_12th) : null
+        marks_12th: formData.marks_12th ? parseInt(formData.marks_12th) : null,
+        fee: fee,
+        fee_breakdown: feeComponents
       }
 
       const res = await window.api.students.create(data)
@@ -709,24 +710,93 @@ function NewAdmission() {
                   {formData.level === 'inter' ? '🎓 Inter Fee Breakdown' : '📘 BS Fee Breakdown'}
                 </h3>
                 {formData.level === 'inter' ? (
-                  <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-                    <div>Admission Fee: <strong>Rs. {feeComponents.admission_fee?.toLocaleString()}</strong></div>
-                    <div>Annual Fund: <strong>Rs. {feeComponents.annual_fund?.toLocaleString()}</strong></div>
-                    <div>Tuition Fee: <strong>Rs. {feeComponents.tuition_fee?.toLocaleString()}</strong>
-                      {percentage !== null && <span style={{ opacity: 0.7 }}> (based on {percentage.toFixed(1)}% marks)</span>}
+                  <div style={{ fontSize: 12, lineHeight: 2.2 }}>
+                    <div className="fee-component-row">
+                      <span>Admission Fee:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.admission_fee || 0}
+                        onChange={(e) => handleFeeComponentChange('admission_fee', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                    </div>
+                    <div className="fee-component-row">
+                      <span>Annual Fund:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.annual_fund || 0}
+                        onChange={(e) => handleFeeComponentChange('annual_fund', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                    </div>
+                    <div className="fee-component-row">
+                      <span>Tuition Fee:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.tuition_fee || 0}
+                        onChange={(e) => handleFeeComponentChange('tuition_fee', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                      {percentage !== null && (
+                        <span style={{ opacity: 0.7, fontSize: 11, marginLeft: 8 }}>
+                          (initially based on {percentage.toFixed(1)}% marks)
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-                    <div>Admission Fee: <strong>Rs. {feeComponents.admission_fee?.toLocaleString()}</strong></div>
-                    <div>In-House Exam Fee: <strong>Rs. {feeComponents.inhouse_exam_fee?.toLocaleString()}</strong></div>
-                    <div>Semester Fee: <strong>Rs. {feeComponents.semester_fee?.toLocaleString()}</strong></div>
+                  <div style={{ fontSize: 12, lineHeight: 2.2 }}>
+                    <div className="fee-component-row">
+                      <span>Admission Fee:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.admission_fee || 0}
+                        onChange={(e) => handleFeeComponentChange('admission_fee', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                    </div>
+                    <div className="fee-component-row">
+                      <span>In-House Exam Fee:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.inhouse_exam_fee || 0}
+                        onChange={(e) => handleFeeComponentChange('inhouse_exam_fee', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                    </div>
+                    <div className="fee-component-row">
+                      <span>Semester Fee:</span>
+                      <input
+                        type="number"
+                        value={feeComponents.semester_fee || 0}
+                        onChange={(e) => handleFeeComponentChange('semester_fee', e.target.value)}
+                        className="fee-component-input"
+                        min="0"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
-              <div style={{ textAlign: 'right', minWidth: 120 }}>
-                <div style={{ fontSize: 11, opacity: 0.8 }}>Total</div>
-                <div style={{ fontSize: 24, fontWeight: 800 }}>Rs. {fee.toLocaleString()}</div>
+              <div style={{ textAlign: 'right', minWidth: 140, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>Total Fee</div>
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 800,
+                  padding: '4px 12px',
+                  background: '#e8f5e9',
+                  borderRadius: 6,
+                  color: '#1b5e20'
+                }}>
+                  Rs. {fee.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>
+                  Auto-calculated from components above
+                </div>
               </div>
             </div>
           )}
@@ -769,9 +839,10 @@ function NewAdmission() {
                   marks_12th: '',
                   result_available: false
                 })
-                setFee(null)
-                setPercentage(null)
-                setErrors({})
+    setFee(null)
+    setFeeComponents(null)
+    setPercentage(null)
+    setErrors({})
               }}
             >
               <IconRefresh color="#555" size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Reset

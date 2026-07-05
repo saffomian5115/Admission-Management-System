@@ -15,9 +15,7 @@ function Settings() {
   const [interAnnualFund, setInterAnnualFund] = useState(2000)
   const [bsAdmissionFee, setBsAdmissionFee] = useState(3000)
   const [bsInhouseExamFee, setBsInhouseExamFee] = useState(1000)
-  const [bsSemesterFee, setBsSemesterFee] = useState(45000)
-  const [bsSemesterFeeIt, setBsSemesterFeeIt] = useState(50000)
-  const [bsItPrograms, setBsItPrograms] = useState('IT, CS, SE, AI')
+  const [bsSemesterFee, setBsSemesterFee] = useState(50000)
   const [documentsInter, setDocumentsInter] = useState([])
   const [documentsBs, setDocumentsBs] = useState([])
   const [printInstructionsInter, setPrintInstructionsInter] = useState('')
@@ -49,9 +47,7 @@ function Settings() {
         setInterAnnualFund(settingsRes.data.inter_annual_fund ?? 2000)
         setBsAdmissionFee(settingsRes.data.bs_admission_fee ?? 3000)
         setBsInhouseExamFee(settingsRes.data.bs_inhouse_exam_fee ?? 1000)
-        setBsSemesterFee(settingsRes.data.bs_semester_fee ?? 45000)
-        setBsSemesterFeeIt(settingsRes.data.bs_semester_fee_it ?? 50000)
-        setBsItPrograms((settingsRes.data.bs_it_programs || ['IT', 'CS', 'SE', 'AI']).join(', '))
+        setBsSemesterFee(settingsRes.data.bs_semester_fee ?? 50000)
         setDocumentsInter((settingsRes.data.documents_inter || []).map(d => normalizeDoc(d)))
         setDocumentsBs((settingsRes.data.documents_bs || []).map(d => normalizeDoc(d)))
         setPrintInstructionsInter(
@@ -103,8 +99,6 @@ function Settings() {
       await window.api.settings.update('bs_admission_fee', parseFloat(bsAdmissionFee) || 0)
       await window.api.settings.update('bs_inhouse_exam_fee', parseFloat(bsInhouseExamFee) || 0)
       await window.api.settings.update('bs_semester_fee', parseFloat(bsSemesterFee) || 0)
-      await window.api.settings.update('bs_semester_fee_it', parseFloat(bsSemesterFeeIt) || 0)
-      await window.api.settings.update('bs_it_programs', bsItPrograms.split(',').map(s => s.trim()).filter(Boolean))
       showToast('✅ All fee settings saved!', 'success')
     } catch (err) {
       showToast(`❌ Error: ${err.message}`, 'error')
@@ -391,39 +385,16 @@ function Settings() {
                   />
                 </div>
               </div>
-              <div className="form-row" style={{ marginBottom: 12 }}>
-                <div className="form-group">
-                  <label>Default Semester Fee (Rs.)</label>
-                  <input
-                    type="number"
-                    value={bsSemesterFee}
-                    onChange={(e) => setBsSemesterFee(e.target.value)}
-                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
-                    min="0"
-                  />
-                  <span className="field-hint">Applied to all BS programs except IT programs</span>
-                </div>
-                <div className="form-group">
-                  <label>IT Program Semester Fee (Rs.)</label>
-                  <input
-                    type="number"
-                    value={bsSemesterFeeIt}
-                    onChange={(e) => setBsSemesterFeeIt(e.target.value)}
-                    style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
-                    min="0"
-                  />
-                </div>
-              </div>
-              <div className="form-group" style={{ marginBottom: 8 }}>
-                <label>IT Programs (comma-separated program names)</label>
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label>Semester Fee (Rs.)</label>
                 <input
-                  type="text"
-                  value={bsItPrograms}
-                  onChange={(e) => setBsItPrograms(e.target.value)}
+                  type="number"
+                  value={bsSemesterFee}
+                  onChange={(e) => setBsSemesterFee(e.target.value)}
                   style={{ padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
-                  placeholder="IT, CS, SE, AI"
+                  min="0"
                 />
-                <span className="field-hint">Programs matching these names will get the higher IT semester fee</span>
+                <span className="field-hint">Applied to all BS programs uniformly</span>
               </div>
             </div>
 
