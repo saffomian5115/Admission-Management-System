@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "PGC Admission Management System - Punjab College Mian Channu",
   "main": "./out/main/index.js",
-  "author": "Punjab College Mian Channu",
+  "author": "Sarfraz Pro Dev",
   "homepage": "",
   "scripts": {
     "format": "prettier --write .",
