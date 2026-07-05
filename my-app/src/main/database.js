@@ -334,6 +334,60 @@ export function initializeDatabase() {
     insertAdpProgram.run(progName)
   }
 
+  // Migration: remove duplicate programs (keep lowest ID) and add UNIQUE(name, level) constraint
+  try {
+    // Find duplicate programs (same name + level)
+    const duplicates = db.prepare(`
+      SELECT name, level, COUNT(*) as cnt
+      FROM programs
+      GROUP BY name, level
+      HAVING cnt > 1
+    `).all()
+
+    if (duplicates.length > 0) {
+      console.log('Found duplicate programs, cleaning up...')
+      const deleteDupe = db.prepare('DELETE FROM programs WHERE id = ?')
+      for (const dup of duplicates) {
+        // Get all IDs for this name+level, ordered by ID ascending
+        const rows = db.prepare(
+          'SELECT id FROM programs WHERE name = ? AND level = ? ORDER BY id'
+        ).all(dup.name, dup.level)
+        // Keep the first (lowest ID — preserves foreign key references), delete the rest
+        for (let i = 1; i < rows.length; i++) {
+          deleteDupe.run(rows[i].id)
+        }
+      }
+    }
+
+    // Add UNIQUE constraint on (name, level) by recreating the table
+    // Check if constraint already exists (origin='u' means created by UNIQUE constraint)
+    const hasUnique = db.prepare(`
+      SELECT COUNT(*) as cnt FROM pragma_index_list('programs') 
+      WHERE origin = 'u'
+    `).get().cnt > 0
+
+    if (!hasUnique) {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE programs_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          level TEXT NOT NULL CHECK(level IN ('inter', 'bs')),
+          institute_type TEXT NOT NULL CHECK(institute_type IN ('punjab', 'regional', 'both')),
+          institute_name TEXT NOT NULL DEFAULT '',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          UNIQUE(name, level)
+        );
+        INSERT INTO programs_new SELECT * FROM programs;
+        DROP TABLE programs;
+        ALTER TABLE programs_new RENAME TO programs;
+        PRAGMA foreign_keys = ON;
+      `)
+    }
+  } catch (e) {
+    console.error('Migration error (non-fatal):', e.message)
+  }
+
   // Seed default programs if empty
   const programCount = db.prepare('SELECT COUNT(*) as count FROM programs').get()
   if (programCount.count === 0) {
@@ -681,6 +735,11 @@ export function getPrograms(level = null) {
 
 export function createProgram(data) {
   const db = getDatabase()
+  // Check if program with same name and level already exists
+  const existing = db.prepare('SELECT id FROM programs WHERE name = ? AND level = ?').get(data.name, data.level)
+  if (existing) {
+    throw new Error(`Program "${data.name}" already exists for ${data.level.toUpperCase()} level`)
+  }
   const stmt = db.prepare(
     'INSERT INTO programs (name, level, institute_type, institute_name) VALUES (?, ?, ?, ?)'
   )
